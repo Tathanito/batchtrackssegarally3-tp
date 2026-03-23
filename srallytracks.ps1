@@ -1,4 +1,4 @@
-# SEGA Rally 3 Edition Generator
+# SEGA Rally 3 Tracks batch
 # Credits: Tathan (x.com/konotathan | tathan.moe)
 
 $segaRally3Dir = Read-Host "Enter the full path to your 'SEGA Rally 3' base folder (e.g., C:\Games\Arcade\SEGA Rally 3)"
