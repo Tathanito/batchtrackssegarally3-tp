@@ -1,12 +1,12 @@
 # SEGA Rally 3 Edition Generator
 # Credits: Tathan (x.com/konotathan | tathan.moe)
 
-$sourceRally = Read-Host "Enter the full path to your SEGA Rally 3 'Rally' folder"
+$segaRally3Dir = Read-Host "Enter the full path to your 'SEGA Rally 3' base folder (e.g., C:\Games\Arcade\SEGA Rally 3)"
 $magiTracks = Read-Host "Enter the full path to your SEGA Rally Revo tracks folder"
 
 # Validate paths
-if (-not (Test-Path $sourceRally)) {
-    Write-Host "Error: SEGA Rally 3 installation not found at '$sourceRally'. Exiting." -ForegroundColor Red
+if (-not (Test-Path $segaRally3Dir)) {
+    Write-Host "Error: SEGA Rally 3 installation not found at '$segaRally3Dir'. Exiting." -ForegroundColor Red
     exit
 }
 
@@ -15,8 +15,8 @@ if (-not (Test-Path $magiTracks)) {
     exit
 }
 
-$baseDir = Split-Path $sourceRally -Parent
-$originalTracksDir = "$sourceRally\Main_release\tracks"
+$baseDir = Split-Path $segaRally3Dir -Parent
+$originalTracksDir = "$segaRally3Dir\Rally\Main_release\tracks"
 
 if (-not (Test-Path $originalTracksDir)) {
     Write-Host "Error: Original tracks folder not found. Check your installation structure." -ForegroundColor Red
@@ -52,6 +52,30 @@ $targetDefs = [ordered]@{
     "Tropical4" = @{ Master = "tropical4"; Route = "tro_track_route4" }
 }
 
+$carsSection = @"
+[Cars]
+Car0=Citroen C4 WRC
+Car1=Ford Focus RS WRC 07
+Car2=Subaru Impreza WRC2008
+Car3=Suzuki SX4 WRC
+Car4=Mitsubishi Lancer Evolution X
+Car5=Peugeot 207 Super 2000
+Car6=Toyota Celica ST205
+Car7=Lancia Super Delta HF integrale
+Car8=Bowler Nemesis
+Car9=McRae Enduro
+"@
+
+$gameInfoTracks = @{
+    "SEGA Rally 3 - Alpine Edition" = "[Tracks]`nTrack0=Alpine 7`nTrack1=Alpine 1`nTrack2=Alpine (Original)`nTrack3=Alpine 3`nTrack4=Alpine 2`nTrack5=Alpine 6"
+    "SEGA Rally 3 - Arctic Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Arctic 2`nTrack2=Arctic 1`nTrack3=Arctic 6`nTrack4=Arctic 3`nTrack5=Arctic 7"
+    "SEGA Rally 3 - Canyon Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Canyon (Original)`nTrack2=Canyon 1`nTrack3=Canyon 3`nTrack4=Canyon 2`nTrack5=Canyon 7"
+    "SEGA Rally 3 - Master Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Canyon (Original)`nTrack2=Lakeside 1`nTrack3=Lakeside (Original)`nTrack4=Desert 95 (Original)`nTrack5=Stadium (Original)"
+    "SEGA Rally 3 - Safari Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Safari 2`nTrack2=Safari 1`nTrack3=Safari 6`nTrack4=Safari 3`nTrack5=Stadium (Original)"
+    "SEGA Rally 3 - Tropical Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Tropical 2`nTrack2=Tropical 1`nTrack3=Lakeside (Original)`nTrack4=Tropical 3`nTrack5=Stadium (Original)"
+    "SEGA Rally 3 - Tropical Edition 478" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Tropical 8`nTrack2=Tropical 7`nTrack3=Lakeside (Original)`nTrack4=Desert 95 (Original)`nTrack5=Stadium (Original)"
+}
+
 # Cleanup existing edition folders
 foreach ($editionName in $editions.Keys) {
     $targetDir = "$baseDir\$editionName"
@@ -68,24 +92,43 @@ foreach ($edition in $editions.GetEnumerator()) {
 
     Write-Host "Building $editionName..." -ForegroundColor Cyan
 
-    $null = New-Item -ItemType Directory -Force -Path "$targetDir\Main_release\tracks"
+    $targetRally = "$targetDir\Rally"
+    $targetShell = "$targetDir\Shell"
+    $targetShellData = "$targetDir\ShellData"
+    
+    $null = New-Item -ItemType Directory -Force -Path "$targetRally\Main_release\tracks"
+    $null = New-Item -ItemType Directory -Force -Path $targetShell
+    $null = New-Item -ItemType Directory -Force -Path $targetShellData
 
-    # Link folders and copy files in root
-    Get-ChildItem -Path $sourceRally | Where-Object Name -ne "Main_release" | ForEach-Object {
-        if ($_.PSIsContainer) {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetDir\$($_.Name)" -Target $_.FullName -Force
-        } else {
-            Copy-Item -Path $_.FullName -Destination "$targetDir\$($_.Name)" -Force
+    # --- Handle Shell ---
+    if (Test-Path "$segaRally3Dir\Shell") {
+        Get-ChildItem -Path "$segaRally3Dir\Shell" | ForEach-Object {
+            $null = New-Item -ItemType SymbolicLink -Path "$targetShell\$($_.Name)" -Target $_.FullName -Force
         }
     }
 
-    # Link folders and copy files in Main_release
-    Get-ChildItem -Path "$sourceRally\Main_release" | Where-Object Name -ne "tracks" | ForEach-Object {
-        if ($_.PSIsContainer) {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetDir\Main_release\$($_.Name)" -Target $_.FullName -Force
-        } else {
-            Copy-Item -Path $_.FullName -Destination "$targetDir\Main_release\$($_.Name)" -Force
+    # --- Handle ShellData & GameInfo.ini ---
+    if (Test-Path "$segaRally3Dir\ShellData") {
+        Get-ChildItem -Path "$segaRally3Dir\ShellData" | Where-Object Name -ne "GameInfo.ini" | ForEach-Object {
+            $null = New-Item -ItemType SymbolicLink -Path "$targetShellData\$($_.Name)" -Target $_.FullName -Force
         }
+    }
+    
+    $gameInfoContent = "#game author game info`n" + $gameInfoTracks[$editionName] + "`n`n" + $carsSection
+    Set-Content -Path "$targetShellData\GameInfo.ini" -Value $gameInfoContent -Force
+
+    # --- Handle Rally ---
+    Get-ChildItem -Path "$segaRally3Dir\Rally" | Where-Object { $_.Name -notin @("Main_release", "Rally.exe") } | ForEach-Object {
+        $null = New-Item -ItemType SymbolicLink -Path "$targetRally\$($_.Name)" -Target $_.FullName -Force
+    }
+    
+    if (Test-Path "$segaRally3Dir\Rally\Rally.exe") {
+        Copy-Item -Path "$segaRally3Dir\Rally\Rally.exe" -Destination "$targetRally\Rally.exe" -Force
+    }
+
+    # --- Handle Main_release ---
+    Get-ChildItem -Path "$segaRally3Dir\Rally\Main_release" | Where-Object Name -ne "tracks" | ForEach-Object {
+        $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\$($_.Name)" -Target $_.FullName -Force
     }
 
     # Determine vanilla track to keep
@@ -111,14 +154,14 @@ foreach ($edition in $editions.GetEnumerator()) {
 
         if ($itemName -in $targetDefs.Keys) {
             if ($itemName -eq $keptTrack) {
-                $null = New-Item -ItemType SymbolicLink -Path "$targetDir\Main_release\tracks\$itemName" -Target $_.FullName -Force
+                $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
             } else {
                 $slotIndex = [array]::IndexOf($slotsToFill, $itemName)
                 
                 if ($slotIndex -lt $sourceTracks.Count) {
                     $sourceTrackName = $sourceTracks[$slotIndex]
                     $sourceTrackDir = "$magiTracks\$sourceTrackName"
-                    $newTrackDir = "$targetDir\Main_release\tracks\$itemName"
+                    $newTrackDir = "$targetRally\Main_release\tracks\$itemName"
                     $null = New-Item -ItemType Directory -Force -Path $newTrackDir
                     
                     $sNameLower = $sourceTrackName.ToLower()
@@ -135,11 +178,11 @@ foreach ($edition in $editions.GetEnumerator()) {
                         Copy-Item -Path $_.FullName -Destination "$newTrackDir\$newName" -Force
                     }
                 } else {
-                    $null = New-Item -ItemType SymbolicLink -Path "$targetDir\Main_release\tracks\$itemName" -Target $_.FullName -Force
+                    $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
                 }
             }
         } else {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetDir\Main_release\tracks\$itemName" -Target $_.FullName -Force
+            $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
         }
     }
 }
