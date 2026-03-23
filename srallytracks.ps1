@@ -1,27 +1,16 @@
-# SEGA Rally 3 Tracks batch
+# SEGA Rally 3 Track Batch
 # Credits: Tathan (x.com/konotathan | tathan.moe)
 
-$segaRally3Dir = Read-Host "Enter the full path to your 'SEGA Rally 3' base folder (e.g., C:\Games\Arcade\SEGA Rally 3)"
+$segaRally3Dir = Read-Host "Enter the full path to your 'SEGA Rally 3' base folder"
 $magiTracks = Read-Host "Enter the full path to your SEGA Rally Revo tracks folder"
 
-# Validate paths
-if (-not (Test-Path $segaRally3Dir)) {
-    Write-Host "Error: SEGA Rally 3 installation not found at '$segaRally3Dir'. Exiting." -ForegroundColor Red
-    exit
-}
-
-if (-not (Test-Path $magiTracks)) {
-    Write-Host "Error: Revo tracks folder not found at '$magiTracks'. Exiting." -ForegroundColor Red
+if (-not (Test-Path $segaRally3Dir) -or -not (Test-Path $magiTracks)) {
+    Write-Host "Error: Paths not found. Exiting." -ForegroundColor Red
     exit
 }
 
 $baseDir = Split-Path $segaRally3Dir -Parent
-$originalTracksDir = "$segaRally3Dir\Rally\Main_release\tracks"
-
-if (-not (Test-Path $originalTracksDir)) {
-    Write-Host "Error: Original tracks folder not found. Check your installation structure." -ForegroundColor Red
-    exit
-}
+$originalTracksDir = Join-Path $segaRally3Dir "Rally\Main_release\tracks"
 
 $editions = [ordered]@{
     "SEGA Rally 3 - Alpine Edition"       = @("alpine1", "alpine2", "alpine3", "alpine6", "alpine7")
@@ -33,24 +22,30 @@ $editions = [ordered]@{
     "SEGA Rally 3 - Tropical Edition 478" = @("tropical7", "tropical8")
 }
 
+# The preferred vanilla track to KEEP if there are unused slots
 $keepMatches = @{
-    "Alpine"   = "Alpine4"
-    "Canyon"   = "Canyon4"
-    "Desert"   = "Desert4"
-    "Lakeside" = "Lakeside4"
-    "Master"   = "Lakeside4"
-    "Stadium"  = "Stadium4"
-    "Tropical" = "Tropical4"
+    "Alpine"   = "Alpine4"; "Canyon"   = "Canyon4"; "Desert"   = "Desert4"
+    "Lakeside" = "Lakeside4"; "Master"   = "Lakeside4"; "Stadium"  = "Stadium4"
 }
 
+# Tropical4 is explicitly excluded to protect the Main Menu background
 $targetDefs = [ordered]@{
     "Alpine4"   = @{ Master = "alpine4"; Route = "alp_track_route4" }
     "Canyon4"   = @{ Master = "canyon4"; Route = "can_track_route4" }
     "Desert4"   = @{ Master = "desert4"; Route = "des_track_route4" }
     "Lakeside4" = @{ Master = "lakeside4"; Route = "lak_track_route4" }
     "Stadium4"  = @{ Master = "stadium4"; Route = "sta_track_route4" }
-    "Tropical4" = @{ Master = "tropical4"; Route = "tro_track_route4" }
 }
+
+$fileMappings = @(
+    @{ SourceSuffix = "*master_gfx_xdata.sbf"; Format = "{0}_master_gfx_xdata.sbf"; IsMaster = $true }
+    @{ SourceSuffix = "*master_xdata.sbf"; Format = "{0}_master_xdata.sbf"; IsMaster = $true }
+    @{ SourceSuffix = "*gameobj_gfx_dis_data.sbf"; Format = "{1}_gameobj_gfx_dis_data.sbf"; IsMaster = $false }
+    @{ SourceSuffix = "*game_objects_gfx_data.sbf"; Format = "{1}_game_objects_gfx_data.sbf"; IsMaster = $false }
+    @{ SourceSuffix = "*pobj_master_gfx_xdata.sbf"; Format = "{1}_pobj_master_gfx_xdata.sbf"; IsMaster = $false }
+    @{ SourceSuffix = "*pobj_plac_gfx_xdata.sbf"; Format = "{1}_pobj_plac_gfx_xdata.sbf"; IsMaster = $false }
+    @{ SourceSuffix = "*proc_cached.bin"; Format = "{2}_proc_cached.bin"; IsMaster = $false }
+)
 
 $carsSection = @"
 [Cars]
@@ -66,124 +61,125 @@ Car8=Bowler Nemesis
 Car9=McRae Enduro
 "@
 
-$gameInfoTracks = @{
-    "SEGA Rally 3 - Alpine Edition" = "[Tracks]`nTrack0=Alpine 7`nTrack1=Alpine 1`nTrack2=Alpine (Original)`nTrack3=Alpine 3`nTrack4=Alpine 2`nTrack5=Alpine 6"
-    "SEGA Rally 3 - Arctic Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Arctic 2`nTrack2=Arctic 1`nTrack3=Arctic 6`nTrack4=Arctic 3`nTrack5=Arctic 7"
-    "SEGA Rally 3 - Canyon Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Canyon (Original)`nTrack2=Canyon 1`nTrack3=Canyon 3`nTrack4=Canyon 2`nTrack5=Canyon 7"
-    "SEGA Rally 3 - Master Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Canyon (Original)`nTrack2=Lakeside 1`nTrack3=Lakeside (Original)`nTrack4=Desert 95 (Original)`nTrack5=Stadium (Original)"
-    "SEGA Rally 3 - Safari Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Safari 2`nTrack2=Safari 1`nTrack3=Safari 6`nTrack4=Safari 3`nTrack5=Stadium (Original)"
-    "SEGA Rally 3 - Tropical Edition" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Tropical 2`nTrack2=Tropical 1`nTrack3=Lakeside (Original)`nTrack4=Tropical 3`nTrack5=Stadium (Original)"
-    "SEGA Rally 3 - Tropical Edition 478" = "[Tracks]`nTrack0=Tropical (Original)`nTrack1=Tropical 8`nTrack2=Tropical 7`nTrack3=Lakeside (Original)`nTrack4=Desert 95 (Original)`nTrack5=Stadium (Original)"
-}
+$rootFolders = @("Rally", "Shell", "ShellData")
 
-# Cleanup existing edition folders
 foreach ($editionName in $editions.Keys) {
-    $targetDir = "$baseDir\$editionName"
-    if (Test-Path $targetDir) {
-        Remove-Item -Path $targetDir -Recurse -Force
-    }
+    $targetDir = Join-Path $baseDir $editionName
+    if (Test-Path $targetDir) { Remove-Item -Path $targetDir -Recurse -Force }
 }
 
-# Generate new instances
 foreach ($edition in $editions.GetEnumerator()) {
     $editionName = $edition.Name
     $sourceTracks = $edition.Value
-    $targetDir = "$baseDir\$editionName"
+    $targetDir = Join-Path $baseDir $editionName
 
     Write-Host "Building $editionName..." -ForegroundColor Cyan
+    $null = New-Item -ItemType Directory -Force -Path $targetDir
 
-    $targetRally = "$targetDir\Rally"
-    $targetShell = "$targetDir\Shell"
-    $targetShellData = "$targetDir\ShellData"
-    
-    $null = New-Item -ItemType Directory -Force -Path "$targetRally\Main_release\tracks"
-    $null = New-Item -ItemType Directory -Force -Path $targetShell
-    $null = New-Item -ItemType Directory -Force -Path $targetShellData
+    # 1. Base files Hard Linking (ignores arbitrary folders like MagiPacks)
+    foreach ($folder in $rootFolders) {
+        $sourceRoot = Join-Path $segaRally3Dir $folder
+        if (-not (Test-Path $sourceRoot)) { continue }
 
-    # --- Handle Shell ---
-    if (Test-Path "$segaRally3Dir\Shell") {
-        Get-ChildItem -Path "$segaRally3Dir\Shell" | ForEach-Object {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetShell\$($_.Name)" -Target $_.FullName -Force
+        $targetRoot = Join-Path $targetDir $folder
+        $null = New-Item -ItemType Directory -Path $targetRoot -Force
+
+        Get-ChildItem -Path $sourceRoot -Recurse | ForEach-Object {
+            $item = $_
+            $relPath = $item.FullName.Substring($sourceRoot.Length).TrimStart('\')
+            $targetPath = Join-Path $targetRoot $relPath
+
+            if ($item.PSIsContainer) {
+                $null = New-Item -ItemType Directory -Path $targetPath -Force
+            } else {
+                if ($folder -eq "Rally" -and $relPath -like "Main_release\tracks\*") { return }
+                if ($folder -eq "Rally" -and $relPath -eq "Rally.exe") {
+                    Copy-Item -Path $item.FullName -Destination $targetPath -Force
+                    return
+                }
+                if ($folder -eq "ShellData" -and $relPath -eq "GameInfo.ini") { return }
+
+                $null = New-Item -ItemType HardLink -Path $targetPath -Target $item.FullName -Force
+            }
         }
     }
 
-    # --- Handle ShellData & GameInfo.ini ---
-    if (Test-Path "$segaRally3Dir\ShellData") {
-        Get-ChildItem -Path "$segaRally3Dir\ShellData" | Where-Object Name -ne "GameInfo.ini" | ForEach-Object {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetShellData\$($_.Name)" -Target $_.FullName -Force
-        }
-    }
-    
-    $gameInfoContent = "#game author game info`n" + $gameInfoTracks[$editionName] + "`n`n" + $carsSection
-    Set-Content -Path "$targetShellData\GameInfo.ini" -Value $gameInfoContent -Force
-
-    # --- Handle Rally ---
-    Get-ChildItem -Path "$segaRally3Dir\Rally" | Where-Object { $_.Name -notin @("Main_release", "Rally.exe") } | ForEach-Object {
-        $null = New-Item -ItemType SymbolicLink -Path "$targetRally\$($_.Name)" -Target $_.FullName -Force
-    }
-    
-    if (Test-Path "$segaRally3Dir\Rally\Rally.exe") {
-        Copy-Item -Path "$segaRally3Dir\Rally\Rally.exe" -Destination "$targetRally\Rally.exe" -Force
-    }
-
-    # --- Handle Main_release ---
-    Get-ChildItem -Path "$segaRally3Dir\Rally\Main_release" | Where-Object Name -ne "tracks" | ForEach-Object {
-        $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\$($_.Name)" -Target $_.FullName -Force
-    }
-
-    # Determine vanilla track to keep
+    # 2. Slot Logic (Prioritize overwriting non-native tracks first)
     $keptTrack = $null
     foreach ($key in $keepMatches.Keys) {
-        if ($editionName -match $key) {
-            $keptTrack = $keepMatches[$key]
-            break
-        }
+        if ($editionName -match $key) { $keptTrack = $keepMatches[$key]; break }
     }
 
-    # Identify slots for new tracks
     $slotsToFill = @()
     foreach ($slot in $targetDefs.Keys) {
-        if ($slot -ne $keptTrack) {
-            $slotsToFill += $slot
-        }
+        if ($slot -ne $keptTrack) { $slotsToFill += $slot }
+    }
+    if ($keptTrack) { $slotsToFill += $keptTrack } # Native track overwritten LAST if array is full
+
+    # Dynamic Map Names for GameInfo.ini
+    $gameInfoMap = @{
+        "Tropical4" = "Tropical (Original)"
+        "Canyon4"   = "Canyon (Original)"
+        "Alpine4"   = "Alpine (Original)"
+        "Lakeside4" = "Lakeside (Original)"
+        "Desert4"   = "Desert 95 (Original)"
+        "Stadium4"  = "Stadium (Original)"
     }
 
-    # Process track folder replacements
-    Get-ChildItem -Path $originalTracksDir | ForEach-Object {
+    $targetRallyTracks = Join-Path $targetDir "Rally\Main_release\tracks"
+    if (-not (Test-Path $targetRallyTracks)) { $null = New-Item -ItemType Directory -Path $targetRallyTracks -Force }
+
+    # 3. Track Processing & Strict File Map
+    Get-ChildItem -Path $originalTracksDir -Directory | ForEach-Object {
         $itemName = $_.Name
+        $newTrackDir = Join-Path $targetRallyTracks $itemName
+        if (-not (Test-Path $newTrackDir)) { $null = New-Item -ItemType Directory -Path $newTrackDir -Force }
 
         if ($itemName -in $targetDefs.Keys) {
-            if ($itemName -eq $keptTrack) {
-                $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
-            } else {
-                $slotIndex = [array]::IndexOf($slotsToFill, $itemName)
+            $slotIndex = [array]::IndexOf($slotsToFill, $itemName)
+            
+            if ($slotIndex -lt $sourceTracks.Count) {
+                $sourceTrackName = $sourceTracks[$slotIndex]
+                $sourceTrackDir = Join-Path $magiTracks $sourceTrackName
                 
-                if ($slotIndex -lt $sourceTracks.Count) {
-                    $sourceTrackName = $sourceTracks[$slotIndex]
-                    $sourceTrackDir = "$magiTracks\$sourceTrackName"
-                    $newTrackDir = "$targetRally\Main_release\tracks\$itemName"
-                    $null = New-Item -ItemType Directory -Force -Path $newTrackDir
-                    
-                    $sNameLower = $sourceTrackName.ToLower()
-                    $sourceMasterPrefix = $sNameLower
-                    $sourceRoutePrefix = $sNameLower.Substring(0,3) + "_track_route" + $sNameLower.Substring($sNameLower.Length - 1, 1)
+                # Format name for GameInfo
+                $friendlyName = $sourceTrackName -replace "^([a-zA-Z]+)(\d+)$", "`$1 `$2"
+                $gameInfoMap[$itemName] = (Get-Culture).TextInfo.ToTitleCase($friendlyName.ToLower())
 
-                    $targetMasterPrefix = $targetDefs[$itemName].Master
-                    $targetRoutePrefix = $targetDefs[$itemName].Route
+                $targetMaster = $targetDefs[$itemName].Master
+                $targetRoute = $targetDefs[$itemName].Route
+                $targetRouteTitle = $targetRoute.Substring(0,1).ToUpper() + $targetRoute.Substring(1)
 
-                    # Copy and rename Revo track files
-                    Get-ChildItem -Path $sourceTrackDir -File | ForEach-Object {
-                        $newName = $_.Name -ireplace "^$sourceMasterPrefix", $targetMasterPrefix
-                        $newName = $newName -ireplace "^$sourceRoutePrefix", $targetRoutePrefix
-                        Copy-Item -Path $_.FullName -Destination "$newTrackDir\$newName" -Force
+                foreach ($mapping in $fileMappings) {
+                    $sourceFile = Get-ChildItem -Path $sourceTrackDir -Filter $mapping.SourceSuffix | Select-Object -First 1
+                    if ($sourceFile) {
+                        if ($mapping.IsMaster) {
+                            $newName = $mapping.Format -f $targetMaster
+                        } else {
+                            $newName = $mapping.Format -f $null, $targetRoute, $targetRouteTitle
+                        }
+                        Copy-Item -Path $sourceFile.FullName -Destination (Join-Path $newTrackDir $newName) -Force
                     }
-                } else {
-                    $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
+                }
+            } else {
+                Get-ChildItem -Path $_.FullName -File | ForEach-Object {
+                    $null = New-Item -ItemType HardLink -Path (Join-Path $newTrackDir $_.Name) -Target $_.FullName -Force
                 }
             }
         } else {
-            $null = New-Item -ItemType SymbolicLink -Path "$targetRally\Main_release\tracks\$itemName" -Target $_.FullName -Force
+            # Bypasses logic for Tropical4 and viewer1 (Hard Links them natively)
+            Get-ChildItem -Path $_.FullName -File | ForEach-Object {
+                $null = New-Item -ItemType HardLink -Path (Join-Path $newTrackDir $_.Name) -Target $_.FullName -Force
+            }
         }
     }
+
+    # 4. Generate GameInfo.ini
+    $targetShellData = Join-Path $targetDir "ShellData"
+    if (-not (Test-Path $targetShellData)) { $null = New-Item -ItemType Directory -Path $targetShellData -Force }
+    
+    $tracksSection = "[Tracks]`nTrack0=$($gameInfoMap['Tropical4'])`nTrack1=$($gameInfoMap['Canyon4'])`nTrack2=$($gameInfoMap['Alpine4'])`nTrack3=$($gameInfoMap['Lakeside4'])`nTrack4=$($gameInfoMap['Desert4'])`nTrack5=$($gameInfoMap['Stadium4'])"
+    $gameInfoContent = "#game author game info`n" + $tracksSection + "`n`n" + $carsSection
+    Set-Content -Path (Join-Path $targetShellData "GameInfo.ini") -Value $gameInfoContent -Force
 }
 Write-Host "Batch process completed successfully!" -ForegroundColor Green
